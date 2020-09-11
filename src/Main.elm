@@ -295,7 +295,7 @@ viewTimeCreditGraph shift stretch =
     el [ width fill ] <|
         html <|
             LineChart.viewCustom
-                { x = Axis.default 700 "Weeks" Tuple.first
+                { x = Axis.default 700 "Week" Tuple.first
                 , y = Axis.default 400 "" Tuple.second
                 , container = Container.default "line-chart-1"
                 , interpolation = Interpolation.default
@@ -349,7 +349,7 @@ viewTimeCreditBalances shift stretch balances =
     el [ width fill ] <|
         html <|
             LineChart.viewCustom
-                { x = Axis.default 700 "Weeks" Tuple.first
+                { x = Axis.default 700 "Week" Tuple.first
                 , y = yAxis
                 , container = Container.default "line-chart-1"
                 , interpolation = Interpolation.default
