@@ -370,6 +370,119 @@ viewTimeCreditBalances shift stretch balances =
                 ]
 
 
+viewHelperText : Element Msg
+viewHelperText =
+    column [ width <| maximum 800 fill, centerX, spacing small ]
+        [ paragraph []
+            [ text """At the moment it is possible to jump into the pool directly before an airdrop snapshot.
+                   This discriminates poolers which are providing liquidity since a long time.
+                   To counteract last-minute pooling it is probably a good idea to reward long-term pooling.
+
+                   """
+            ]
+        , paragraph []
+            [ text """We could implement this by using daily snapshots of the LP tokens of each holder
+                              (in this demo we use weekly snapshots for easier exploration).
+                              To give long-term holdings even more weight, we can use a weighted average of these snapshots.
+                              The weighting function is visualized below (blue line)."""
+            ]
+        , paragraph []
+            [ text "To understand the concept it is only necessary to know how the weighting function looks like, but if you are interested in the math: timeWeight(x) = e ^ (-1 * (stretch * (x - shift)) ^ 2)"
+            ]
+        , paragraph []
+            [ text """You can change the function parameters "Time Weight Shift Factor" (shift)
+                                and "Time Weight Stretch Factor" (stretch), but be careful and only change in small steps.
+                                By the way, using a constant timeWeight function would be identical to Average Daily Share Holdings (ADSH),
+                                therefore you can think of this concept as ADSH on steroids with dynamic time weights."""
+            ]
+        , paragraph []
+            [ text """To calculate the actual airdrop share, we need to calculate the so called aidropCredit first.
+                                It is the weighted sum of all valid LP token balances with balances_i identifying the i-th balance
+                                (balances_0 is the youngest and balances_52 the oldest balance):"""
+            ]
+        , paragraph []
+            [ text """airdropCredit(balances) = Sum{i=1, i ∈ [1, 52]} (timeWeight(i) * balances_i)"""
+            ]
+        , paragraph []
+            [ text """(e.g. airdropCredit([4,3,2,1]) = 0.5 * 4 + 0.55 * 3 + 0.6 * 2 + 0.65 * 1) """
+            ]
+        , paragraph []
+            [ text """
+                    Until now we only considered DGVC LP pooling, but for the DegenVC project to succeed we also need pooling for the airdropped tokens.
+                    To encourage pooling for airdropped tokens, we could reward the poolers (who are taking the risk) in the following airdrops.
+
+                    To implement this we would calculate an independent airdropCredit for each LP pool (DGVC and e.g. up to 4 airdropped tokens).
+                    Then we could calculate the weighted sum as weightedAirdropCredit with e.g. the following weights: 60% DGVC and 10% each of the airdopped token pools.
+
+                    Finally, we can calculate the proportional share of the airdrop (nothing special here):
+                    """
+            ]
+        , paragraph []
+            [ text "totalAirdropCredits = sum of weightedAirdropCredits of all liquidity providers"
+            ]
+        , paragraph []
+            [ text "airdropShare = airdropCredit / totalAirdropCredits"
+            ]
+        , paragraph []
+            [ text """(airdropShare is not calculated in this demo because we would need to know the weightedAirdropCredit of all other holders)"""
+            ]
+        , paragraph []
+            [ text """Enough of the theory behind. Feel free to play around with the airdrop calculator below.
+                            Just start by providing weekly token balances (type in a list of arbitrary balances you want to explore).
+                            The amount of balances is not limited directly, but only the last 52 weekly balances will be considered for the calculation.
+                            Removing liquidity from the pool will reduce all previous balances to the same amount (removing all from pooling would reduce all previous balances to zero).
+                            You can see the valid token balances below the input field.
+                            """
+            ]
+        , paragraph []
+            [ text """The three main questions for the community to figure out are:"""
+            ]
+        , paragraph []
+            [ text """(1) How much weight should the youngest balance have (e.g. 0.5)?
+                            This shouldn't be too low because otherwise new poolers will maybe shy away from joining.
+                            """
+            ]
+        , paragraph []
+            [ text """(2) When should be the maximum weight (e.g. at 12 weeks)?
+                            This should be early enough to incentive long-term pooling,
+                            but on the other hand shouldn't be too far in the past that new poolers can reach the maximum weight in a reasonable amount of time.
+                            """
+            ]
+        , paragraph []
+            [ text """(3) When should the weight decrease to zero (e.g. around a year)?
+                                At some time the weight needs to decrease again otherwise it would be unfair to new poolers.
+                                Keep in mind that a year in crypto space corresponds to a decade in more traditional areas.
+                            """
+            ]
+        , paragraph []
+            [ text """If you have any questions feel free to reach out to me.
+                            I am really looking forward to your feedback and the discussion with you afterwards.
+                            I hope that the project and the #degenhorde benefits from this long-term pooling reward concept."""
+            ]
+        , paragraph []
+            [ text """
+                            Hint 1: the token balances are chronological and the graphs are antichronological
+                            """
+            ]
+        , paragraph []
+            [ text """
+                            Hint 2: the green line in the second graph is the weighted balance.
+                            Each weekly balance (red line) is multiplied by the corresponding weight (blue line).
+                            The area under the curve of the weighted balance (green) is the airdropCredit function.
+                            """
+            ]
+        , paragraph []
+            [ text """
+                            Hint 3: this tool is only for exploration and educational purposes to support the process of
+                            designing a proper long-term pooling reward.
+                            After the community and of course the team committed to one concrete approach we can implement
+                            an automatic tracking tool connected to the Ethereum blockchain. So everybody can check his/her airdrop share at anytime.
+                            I also already started to integrate the real (historical) LP token balances for automatic tracking by connecting to Etherscan.
+                            """
+            ]
+        ]
+
+
 view : Model -> Html.Html Msg
 view model =
     layout
@@ -379,7 +492,8 @@ view model =
         ]
     <|
         column [ spacing normal, width fill ]
-            [ viewDailyLPBalances model.dgvcLPBalances model.dgvcLPBalancesRaw
+            [ viewHelperText
+            , viewDailyLPBalances model.dgvcLPBalances model.dgvcLPBalancesRaw
             , row [ width fill, spacing normal ]
                 [ viewTimeCreditShift model.timeCreditShift model.timeCreditShiftRaw
                 , viewTimeCreditStretch model.timeCreditStretch model.timeCreditStretchRaw
