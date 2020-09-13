@@ -1,5 +1,6 @@
 module Palette exposing (..)
 
+import Color as ElmColor
 import Element exposing (Color, rgb, rgb255, rgba, rgba255)
 
 
@@ -74,3 +75,14 @@ blackAlpha alpha =
 freeSpeechBlue : Color
 freeSpeechBlue =
     rgb255 60 64 198
+
+
+
+-- HELP
+
+
+toUiColor : ElmColor.Color -> Color
+toUiColor color =
+    color
+        |> ElmColor.toRgba
+        |> (\c -> rgba c.red c.green c.blue c.alpha)
