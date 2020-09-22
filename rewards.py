@@ -126,6 +126,8 @@ class Pool:
     transactions: List[Transaction] = field(default_factory=list)
     average_daily_shares: Dict[str, float] = field(default_factory=dict)
     share: float = 0.0
+    addresses: List[str] = field(default_factory=list)
+    balances: np.ndarray = None
 
 
 class HolderProvider:
@@ -279,12 +281,24 @@ def load_pools(pools: List[Pool]):
     # extract all addresses from DGVC pool
     main_addresses = {t.address for t in pools[0].transactions}
 
-    for index, pool in enumerate(pools):
+    for pool in pools:
         # allow only transactions from wallets also pooling DGVC
         pool.transactions = [t for t in pool.transactions if t.address in main_addresses]
         addresses, balances = replay_transactions(pool.transactions, last_snapshot)
         limit_balances(balances)
-        pool.average_daily_shares = calculate_average_daily_shares(addresses, balances)
+        pool.addresses = addresses
+        pool.balances = balances
+
+    dgvc_pool = pools[0]
+    purge_addresses = {address for address, balance in zip(dgvc_pool.addresses, dgvc_pool.balances[:, 0]) if balance == 0}
+
+    for pool in pools:
+        address_indexes = {address: index for index, address in enumerate(pool.addresses)}
+        for purge_address in purge_addresses:
+            row_index = address_indexes.get(purge_address)
+            if row_index:
+                pool.balances[row_index, :] = 0
+        pool.average_daily_shares = calculate_average_daily_shares(pool.addresses, pool.balances)
 
     return pools
 
