@@ -244,6 +244,15 @@ def replay_transactions(transactions: List[Transaction], last_snapshot: datetime
     return addresses, balances
 
 
+def limit_balances(balances: np.ndarray):
+    rows, cols = balances.shape
+    for row in range(0, rows):
+        min_value = balances[row, 0]
+        for col in range(1, cols):
+            min_value = min(min_value, balances[row, col])
+            balances[row, col] = min_value
+
+
 def calculate_average_daily_shares(addresses: List[str], balances: np.ndarray) -> Dict[str, float]:
     daily_shares = np.divide(balances, balances.sum(axis=0, keepdims=True),
                              out=np.zeros_like(balances), where=balances != 0)
@@ -274,6 +283,7 @@ def load_pools(pools: List[Pool]):
         # allow only transactions from wallets also pooling DGVC
         pool.transactions = [t for t in pool.transactions if t.address in main_addresses]
         addresses, balances = replay_transactions(pool.transactions, last_snapshot)
+        limit_balances(balances)
         pool.average_daily_shares = calculate_average_daily_shares(addresses, balances)
 
     return pools
