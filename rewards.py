@@ -167,25 +167,40 @@ pools = [('0x7cdc560cc66126a5eb721e444abc30eb85408f7a', 'DGVC'),
          ('0x3633259d244b2f70e77118aa9132b45f9f6ab4d9', 'RAUX')]
 
 
-def extract_transaction(transactions: List[dict]):
+def extract_transactions(transactions: List[dict]) -> List[Transaction]:
     transaction = transactions[0]
     from_ = transaction['from']
     to = transactions[-1]['to']
 
     # TODO additional check of order transactions
 
-    value = Decimal(transaction['value']) / (10 ** Decimal(transaction['tokenDecimal']))
+    def extract_value_timestamp(transaction: dict):
+        value = Decimal(transaction['value']) / (10 ** Decimal(transaction['tokenDecimal']))
+        timestamp = datetime.fromtimestamp(int(transaction['timeStamp']))
+        return value, timestamp
+
+    def extract_token_transfer_transaction(transaction: dict) -> List[Transaction]:
+        value, timestamp = extract_value_timestamp(transaction)
+        return [
+            Transaction(address=transaction['from'], value=-1 * value, timestamp=timestamp),
+            Transaction(address=transaction['to'], value=value, timestamp=timestamp),
+        ]
+
+    value, timestamp = extract_value_timestamp(transaction)
 
     if from_ == zero_address:
         # add to pool
-        address = to
-    else:
+        transactions = [Transaction(address=to, value=value, timestamp=timestamp)]
+    elif to == zero_address:
         # remove from pool
-        address = from_
-        value *= -1
+        transactions = [Transaction(address=from_, value=-1 * value, timestamp=timestamp)]
+    else:
+        # token transfer
+        transactions = [unrolled_transaction
+                        for transaction in transactions
+                        for unrolled_transaction in extract_token_transfer_transaction(transaction)]
 
-    return Transaction(address=address, value=value,
-                       timestamp=datetime.fromtimestamp(int(transaction['timeStamp'])))
+    return transactions
 
 
 def load_transactions(address):
@@ -201,7 +216,7 @@ def load_transactions(address):
             grouped_transactions[tx_hash] = []
         grouped_transactions[tx_hash].append(transaction)
 
-    return [extract_transaction(transaction_group) for transaction_group in grouped_transactions.values()]
+    return [t for transaction_group in grouped_transactions.values() for t in extract_transactions(transaction_group)]
 
 
 def assign_timestamp_to_day(last_snapshot: datetime, timestamp: datetime) -> Optional[int]:
