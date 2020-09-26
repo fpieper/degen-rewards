@@ -76,12 +76,12 @@ td  {{
         <tr>
             <th class="left">Rank</th>
             <th class="left">Address</th>
-            {holders.pool_names:repeat:
+            {pool_names:repeat:
             <th class="right">{{item}}</th>
             }
             <th class="right">Alphadrop</th>
         </tr>
-        {holders.holders:repeat:<tr>
+        {holders:repeat:<tr>
             <td class="left">{{item.rank}}</td>
             <td class="left">
                 <a href="https://etherscan.io/token/0x7cdc560cc66126a5eb721e444abc30eb85408f7a?a={{item.address}}" target="_blank">
@@ -97,7 +97,7 @@ td  {{
     <br/><br/>
     <a href="/export-csv">Export as CSV</a>
     <br/><br/>
-    Last updated: {holders.last_updated}
+    Last updated: {last_updated}
     <br/><br/>
 </body>
 </html>
@@ -132,9 +132,10 @@ class Pool:
 
 class HolderProvider:
     def __init__(self, init_pools):
-        self._holders = None
         self._last_updated = None  # date
         self._init_pools = init_pools
+        self._pool_shares = None
+        self._addresses = None
 
     @property
     def last_updated(self):
@@ -144,15 +145,15 @@ class HolderProvider:
     def pool_names(self):
         return [name for address, name in self._init_pools]
 
-    @property
-    def holders(self):
-        if self._holders is None or self._last_updated < datetime.utcnow().date():
+    def holders(self, pool_weights: List[float] = None):
+        if self._pool_shares is None or self._last_updated < datetime.utcnow().date():
             self._load_and_calculate()
-        return self._holders
+
+        return calculate_alphadrop_shares(self._pool_shares, self._addresses, pool_weights)
 
     def _load_and_calculate(self):
         loaded_pools = load_pools([Pool(*p) for p in self._init_pools])
-        self._holders = calculate_alphadrop_shares(loaded_pools)
+        self._pool_shares, self._addresses = calculate_pool_shares(loaded_pools)
         self._last_updated = datetime.utcnow().date()
 
 
@@ -280,7 +281,7 @@ def calculate_average_daily_shares(addresses: List[str], balances: np.ndarray) -
     return {address: share for address, share in zip(addresses, normalized)}
 
 
-def calculate_pool_shares(pool_count: int) -> Tuple[float, float]:
+def calculate_pool_weights(pool_count: int) -> Tuple[float, float]:
     count_alphadrops = pool_count - 1
     alphadrop_share = 0 if count_alphadrops == 0 else min(max_alphadrop_share, (1 - min_dgvc_share)/count_alphadrops)
     dgvc_share = 1 - alphadrop_share * count_alphadrops
@@ -320,7 +321,7 @@ def load_pools(pools: List[Pool]):
     return pools
 
 
-def calculate_alphadrop_shares(pools: List[Pool]):
+def calculate_pool_shares(pools: List[Pool]) -> Tuple[np.ndarray, List[str]]:
     dgvc_pool = pools[0]
     addresses = list(dgvc_pool.average_daily_shares.keys())
     address_indexes = {address: index for index, address in enumerate(addresses)}
@@ -331,8 +332,16 @@ def calculate_alphadrop_shares(pools: List[Pool]):
         for wallet, share in pool.average_daily_shares.items():
             shares[address_indexes[wallet], pool_index] = share
 
-    dgvc_share, alphadrop_share = calculate_pool_shares(len(pools))
-    shares[:, -1] = dgvc_share * shares[:, 0] + np.sum([alphadrop_share * shares[:, i] for i in range(1, len(pools))], axis=0)
+    return shares, addresses
+
+
+def calculate_alphadrop_shares(shares: np.ndarray, addresses: List[str], pool_weights: List[float] = None) -> Tuple[List[Holder], List[float]]:
+    pool_count = shares.shape[1] - 1
+    if pool_weights is None:
+        dgvc_weight, alphadrop_weight = calculate_pool_weights(pool_count)
+        pool_weights = [dgvc_weight] + [alphadrop_weight] * (pool_count - 1)
+
+    shares[:, -1] = np.sum([weight * shares[:, index] for index, weight in enumerate(pool_weights)], axis=0)
 
     rounded_shares = np.around(shares * 100, 4)
 
@@ -345,13 +354,14 @@ def calculate_alphadrop_shares(pools: List[Pool]):
     for index, holder in enumerate(holders):
         holder.rank = index + 1
 
-    return holders
+    return holders, pool_weights
 
 
 def generate_csv(holders: HolderProvider) -> str:
     lines = [','.join(['rank', 'address', *holders.pool_names, 'alphadrop'])]
+    holders, pool_weights = holders.holders()
     lines.extend([','.join([str(holder.rank), holder.address, *[f"{s:.4f}" for s in holder.pool_shares], f"{holder.alphadrop_share:.4f}"])
-                  for holder in holders.holders])
+                  for holder in holders])
     return '\n'.join(lines)
 
 
@@ -360,8 +370,19 @@ app = FastAPI()
 
 
 @app.get("/", response_class=HTMLResponse)
-def root():
-    return SuperFormatter().format(html, holders=holder_provider)
+def root(pool_weights: Optional[str] = None):
+    try:
+        pool_weights = [float(weight)/100 for weight in pool_weights.split(',')]
+        if len(pool_weights) != len(pools) or sum(pool_weights) != 1:
+            raise
+    except:
+        pool_weights = None
+
+    holders, pool_weights = holder_provider.holders(pool_weights=pool_weights)
+    pool_names = [f"{name} {weight * 100:.1f}%"
+                  for weight, name in zip(pool_weights, holder_provider.pool_names)]
+    return SuperFormatter().format(html, holders=holders, pool_names=pool_names,
+                                   last_updated=holder_provider.last_updated)
 
 
 @app.get("/export-csv")
