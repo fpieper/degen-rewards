@@ -149,7 +149,7 @@ td  {{
         </tr>
         {holders:repeat:<tr>
             <td>
-                <a href="https://etherscan.io/token/0x7cdc560cc66126a5eb721e444abc30eb85408f7a?a={{item[address]}}" target="_blank">
+                <a href="https://etherscan.io/token/{pool_address}?a={{item[address]}}" target="_blank">
                     {{item[address]}}
                 </a>
             </td>
@@ -487,6 +487,7 @@ def view_balances(pool_name: str):
                 }
                for address, balances in zip(pool.addresses, pool.balances.tolist())]
     return SuperFormatter().format(html_balances,
+                                   pool_address=pool.address,
                                    holders=holders,
                                    days=list(range(1, pool.balances.shape[1] + 1)),
                                    last_updated=holder_provider.last_updated)
