@@ -145,7 +145,7 @@ class HolderProvider:
     def pool_names(self):
         return [name for address, name in self._init_pools]
 
-    def holders(self, pool_weights: List[float] = None):
+    def holders(self, pool_weights: List[Decimal] = None):
         if self._pool_shares is None or self._last_updated < datetime.utcnow().date():
             self._load_and_calculate()
 
@@ -335,13 +335,13 @@ def calculate_pool_shares(pools: List[Pool]) -> Tuple[np.ndarray, List[str]]:
     return shares, addresses
 
 
-def calculate_alphadrop_shares(shares: np.ndarray, addresses: List[str], pool_weights: List[float] = None) -> Tuple[List[Holder], List[float]]:
+def calculate_alphadrop_shares(shares: np.ndarray, addresses: List[str], pool_weights: List[Decimal] = None) -> Tuple[List[Holder], List[float]]:
     pool_count = shares.shape[1] - 1
     if pool_weights is None:
         dgvc_weight, alphadrop_weight = calculate_pool_weights(pool_count)
         pool_weights = [dgvc_weight] + [alphadrop_weight] * (pool_count - 1)
 
-    shares[:, -1] = np.sum([weight * shares[:, index] for index, weight in enumerate(pool_weights)], axis=0)
+    shares[:, -1] = np.sum([float(weight) * shares[:, index] for index, weight in enumerate(pool_weights)], axis=0)
 
     rounded_shares = np.around(shares * 100, 4)
 
@@ -372,7 +372,7 @@ app = FastAPI()
 @app.get("/", response_class=HTMLResponse)
 def root(pool_weights: Optional[str] = None):
     try:
-        pool_weights = [float(weight)/100 for weight in pool_weights.split(',')]
+        pool_weights = [Decimal(weight)/100 for weight in pool_weights.split(',')]
         if len(pool_weights) != len(pools) or sum(pool_weights) != 1:
             raise
     except:
