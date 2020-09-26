@@ -164,7 +164,8 @@ etherscan_api_key = '1TP4S4C6I5SD3SDH9G5S1QUN7IVXXY7WBX'
 
 # first address needs to be DGVC
 pools = [('0x7cdc560cc66126a5eb721e444abc30eb85408f7a', 'DGVC'),
-         ('0x3633259d244b2f70e77118aa9132b45f9f6ab4d9', 'RAUX')]
+         ('0x3633259d244b2f70e77118aa9132b45f9f6ab4d9', 'RAUX'),
+         ('0x54965801946d768b395864019903aef8b5b63bb3', 'EYE')]
 
 
 def extract_transactions(transactions: List[dict]) -> List[Transaction]:
