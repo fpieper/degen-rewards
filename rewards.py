@@ -161,6 +161,7 @@ days = 60
 min_dgvc_share = 0.5
 max_alphadrop_share = 0.2
 etherscan_api_key = '1TP4S4C6I5SD3SDH9G5S1QUN7IVXXY7WBX'
+blacklist = {'0x17e00383a843a9922bca3b280c0ade9f8ba48449'}
 
 # first address needs to be DGVC
 pools = [('0x7cdc560cc66126a5eb721e444abc30eb85408f7a', 'DGVC'),
@@ -295,7 +296,7 @@ def load_pools(pools: List[Pool]):
         pool.transactions = load_transactions(pool.address)
 
     # extract all addresses from DGVC pool
-    main_addresses = {t.address for t in pools[0].transactions}
+    main_addresses = {t.address for t in pools[0].transactions if t.address not in blacklist}
 
     for pool in pools:
         # allow only transactions from wallets also pooling DGVC
