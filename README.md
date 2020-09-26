@@ -4,6 +4,7 @@
 
 ````
 git clone https://github.com/fpieper/degen-rewards.git
+apt-get install build-essential python3-dev
 pip3 install -r requirements.txt
 python3 rewards.py --web
 ````
