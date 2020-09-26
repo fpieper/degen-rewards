@@ -3,3 +3,4 @@ numpy
 fastapi
 starlette
 uvicorn
+jenks_natural_breaks

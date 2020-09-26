@@ -10,6 +10,7 @@ from fastapi import FastAPI
 import numpy as np
 from starlette.responses import HTMLResponse, Response
 import requests
+import jenks_natural_breaks
 
 
 # UTILS
@@ -77,7 +78,8 @@ td  {{
             <th class="left">Rank</th>
             <th class="left">Address</th>
             {pool_names:repeat:
-            <th class="right">{{item}}</th>
+            <th class="right">
+                <a href="/lp-balances/{{item[0]}}">{{item[1]}}</a></th>
             }
             <th class="right">Alphadrop</th>
         </tr>
@@ -96,6 +98,66 @@ td  {{
     </table>
     <br/><br/>
     <a href="/export-csv">Export as CSV</a>
+    <br/><br/>
+    Last updated: {last_updated}
+    <br/><br/>
+</body>
+</html>
+'''
+
+html_balances = '''
+<html>
+<head>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Source+Code+Pro&display=swap');
+* {{
+    box-sizing: border-box;
+}}
+body {{
+    font-family: 'Source Code Pro', monospace;
+    padding: 10px 5px;
+    text-align: center;
+}}
+a {{
+    color: black;
+    text-decoration: none;
+}}
+a:hover {{
+    color: red;
+}}
+table {{
+}}
+th {{
+    white-space: nowrap;
+    padding: 2px 6px;
+    font-size:12px;
+}}
+td  {{
+    padding: 3px 6px;
+    text-align: center;
+    font-size:12px;
+}}
+</style>
+</head>
+<body>
+    <table>
+        <tr>
+            <th>Address</th>
+            {days:repeat:
+            <th>Day {{item}}</th>
+            }
+        </tr>
+        {holders:repeat:<tr>
+            <td>
+                <a href="https://etherscan.io/token/0x7cdc560cc66126a5eb721e444abc30eb85408f7a?a={{item[address]}}" target="_blank">
+                    {{item[address]}}
+                </a>
+            </td>
+            {{item[balances]:repeat:
+            <td style="background-color: {{{{item[1]}}}}; color: white">{{{{item[0]}}}}</td>
+            }}
+        </tr>}
+    </table>
     <br/><br/>
     Last updated: {last_updated}
     <br/><br/>
@@ -128,6 +190,7 @@ class Pool:
     share: float = 0.0
     addresses: List[str] = field(default_factory=list)
     balances: np.ndarray = None
+    balance_borders: List[float] = None
 
 
 class HolderProvider:
@@ -136,6 +199,7 @@ class HolderProvider:
         self._init_pools = init_pools
         self._pool_shares = None
         self._addresses = None
+        self.pools = None
 
     @property
     def last_updated(self):
@@ -146,14 +210,14 @@ class HolderProvider:
         return [name for address, name in self._init_pools]
 
     def holders(self, pool_weights: List[Decimal] = None):
-        if self._pool_shares is None or self._last_updated < datetime.utcnow().date():
-            self._load_and_calculate()
-
+        self.load_and_calculate()
         return calculate_alphadrop_shares(self._pool_shares, self._addresses, pool_weights)
 
-    def _load_and_calculate(self):
-        loaded_pools = load_pools([Pool(*p) for p in self._init_pools])
-        self._pool_shares, self._addresses = calculate_pool_shares(loaded_pools)
+    def load_and_calculate(self):
+        if self._pool_shares is not None and self._last_updated == datetime.utcnow().date():
+            return
+        self.pools = load_pools([Pool(*p) for p in self._init_pools])
+        self._pool_shares, self._addresses = calculate_pool_shares(self.pools)
         self._last_updated = datetime.utcnow().date()
 
 
@@ -163,6 +227,7 @@ min_dgvc_share = 0.5
 max_alphadrop_share = 0.2
 etherscan_api_key = '1TP4S4C6I5SD3SDH9G5S1QUN7IVXXY7WBX'
 blacklist = {'0x17e00383a843a9922bca3b280c0ade9f8ba48449'}
+max_balance_classes = 50
 
 # first address needs to be DGVC
 pools = [('0x7cdc560cc66126a5eb721e444abc30eb85408f7a', 'DGVC'),
@@ -379,9 +444,51 @@ def root(pool_weights: Optional[str] = None):
         pool_weights = None
 
     holders, pool_weights = holder_provider.holders(pool_weights=pool_weights)
-    pool_names = [f"{name} {weight * 100:.1f}%"
+    pool_names = [(name, f"{name} {weight * 100:.1f}%")
                   for weight, name in zip(pool_weights, holder_provider.pool_names)]
     return SuperFormatter().format(html, holders=holders, pool_names=pool_names,
+                                   last_updated=holder_provider.last_updated)
+
+
+def fade_color(value: float, class_borders: List[float]):
+    normalized = normalize_value(value, class_borders)
+    if normalized < 0.5:
+        return f"rgb({int(normalized * 2 * 255)},0,255)"
+    else:
+        return f"rgb(255,0,{int((1 - normalized) * 2 * 255)})"
+
+
+def normalize_value(value: float, class_borders):
+    class_index = 0
+    for index, border in enumerate(class_borders[1:]):
+        if value >= border:
+            class_index = index
+        else:
+            break
+    return class_index / (len(class_borders) - 2)
+
+
+@app.get("/lp-balances/{pool_name}", response_class=HTMLResponse)
+def view_balances(pool_name: str):
+    holder_provider.load_and_calculate()
+    pool = [p for p in holder_provider.pools if p.name == pool_name]
+    if not pool:
+        return "Pool not found."
+    pool = pool[0]
+
+    if pool.balance_borders is None:
+        flat_unique_balances = np.array(list(set(pool.balances.reshape(-1).tolist())))
+        n_classes = min(len(flat_unique_balances), max_balance_classes)
+        pool.balance_borders = jenks_natural_breaks.classify(flat_unique_balances, n_classes=n_classes)
+
+    holders = [{'address': address,
+                'balances': [(f"{b:.2f}" if b > 0 else '', fade_color(b, pool.balance_borders))
+                             for b in balances]
+                }
+               for address, balances in zip(pool.addresses, pool.balances.tolist())]
+    return SuperFormatter().format(html_balances,
+                                   holders=holders,
+                                   days=list(range(1, pool.balances.shape[1] + 1)),
                                    last_updated=holder_provider.last_updated)
 
 
