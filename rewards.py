@@ -159,6 +159,8 @@ td  {{
         </tr>}
     </table>
     <br/><br/>
+    <a href={switch_link}>{switch_link_label}</a>
+    <br/><br/>
     Last updated: {last_updated}
     <br/><br/>
 </body>
@@ -191,6 +193,8 @@ class Pool:
     addresses: List[str] = field(default_factory=list)
     balances: np.ndarray = None
     balance_borders: List[float] = None
+    balances_raw: np.ndarray = None
+    balances_raw_borders: np.ndarray = None
 
 
 class HolderProvider:
@@ -368,6 +372,7 @@ def load_pools(pools: List[Pool]):
         # allow only transactions from wallets also pooling DGVC
         pool.transactions = [t for t in pool.transactions if t.address in main_addresses]
         addresses, balances = replay_transactions(pool.transactions, last_snapshot)
+        pool.balances_raw = balances.copy()
         limit_balances(balances)
         pool.addresses = addresses
         pool.balances = balances
@@ -468,29 +473,52 @@ def normalize_value(value: float, class_borders):
     return class_index / (len(class_borders) - 2)
 
 
-@app.get("/lp-balances/{pool_name}", response_class=HTMLResponse)
-def view_balances(pool_name: str):
+def view_balances_model(pool_name: str, use_raw_balances: bool = False):
     holder_provider.load_and_calculate()
     pool = [p for p in holder_provider.pools if p.name == pool_name]
     if not pool:
-        return "Pool not found."
+        return None
     pool = pool[0]
 
-    if pool.balance_borders is None:
-        flat_unique_balances = np.array(list(set(pool.balances.reshape(-1).tolist())))
+    balances = pool.balances_raw if use_raw_balances else pool.balances
+    balance_borders = pool.balances_raw_borders if use_raw_balances else pool.balance_borders
+
+    if balance_borders is None:
+        flat_unique_balances = np.array(list(set(balances.reshape(-1).tolist())))
         n_classes = min(len(flat_unique_balances), max_balance_classes)
-        pool.balance_borders = jenks_natural_breaks.classify(flat_unique_balances, n_classes=n_classes)
+        balance_borders = jenks_natural_breaks.classify(flat_unique_balances, n_classes=n_classes)
 
     holders = [{'address': address,
-                'balances': [(f"{b:.2f}" if b > 0 else '', fade_color(b, pool.balance_borders))
+                'balances': [(f"{b:.2f}" if b > 0 else '', fade_color(b, balance_borders))
                              for b in balances]
                 }
-               for address, balances in zip(pool.addresses, pool.balances.tolist())]
-    return SuperFormatter().format(html_balances,
-                                   pool_address=pool.address,
-                                   holders=holders,
-                                   days=list(range(1, pool.balances.shape[1] + 1)),
-                                   last_updated=holder_provider.last_updated)
+               for address, balances in zip(pool.addresses, balances.tolist())]
+    return {
+        'pool_address': pool.address,
+        'holders': holders,
+        'days': list(range(1, balances.shape[1] + 1)),
+        'last_updated': holder_provider.last_updated
+    }
+
+
+@app.get("/lp-balances/{pool_name}", response_class=HTMLResponse)
+def view_balances(pool_name: str):
+    model = view_balances_model(pool_name)
+    if model is None:
+        return "Pool not found."
+    return SuperFormatter().format(html_balances, **model,
+                                   switch_link=f"/lp-balances-raw/{pool_name}",
+                                   switch_link_label="Original Raw Balances")
+
+
+@app.get("/lp-balances-raw/{pool_name}", response_class=HTMLResponse)
+def view_balances(pool_name: str):
+    model = view_balances_model(pool_name, use_raw_balances=True)
+    if model is None:
+        return "Pool not found."
+    return SuperFormatter().format(html_balances, **model,
+                                   switch_link=f"/lp-balances/{pool_name}",
+                                   switch_link_label="Limited Balances")
 
 
 @app.get("/export-csv")
