@@ -489,7 +489,7 @@ def view_balances_model(pool_name: str, use_raw_balances: bool = False):
         balance_borders = jenks_natural_breaks.classify(flat_unique_balances, n_classes=n_classes)
 
     holders = [{'address': address,
-                'balances': [(f"{b:.2f}" if b > 0 else '', fade_color(b, balance_borders))
+                'balances': [(f"{b:.1f}" if b > 0 else '', fade_color(b, balance_borders))
                              for b in balances]
                 }
                for address, balances in zip(pool.addresses, balances.tolist())]
