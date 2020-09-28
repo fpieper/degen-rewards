@@ -240,6 +240,9 @@ pools = [('0x7cdc560cc66126a5eb721e444abc30eb85408f7a', 'DGVC'),
 
 
 def extract_transactions(transactions: List[dict]) -> List[Transaction]:
+    # filter initial pool create liquidity transaction
+    transactions = [t for t in transactions if not (t['to'] == zero_address and t['from'] == zero_address)]
+
     transaction = transactions[0]
     from_ = transaction['from']
     to = transactions[-1]['to']
@@ -473,6 +476,16 @@ def normalize_value(value: float, class_borders):
     return class_index / (len(class_borders) - 2)
 
 
+def format_balance(balance: float) -> str:
+    if balance == 0:
+        return ''
+    if balance > 0.5:
+        return f"{balance:.0f}"
+    if balance > 0.05:
+        return f"{balance:.1f}"
+    return f"{balance:.2f}"
+
+
 def view_balances_model(pool_name: str, use_raw_balances: bool = False):
     holder_provider.load_and_calculate()
     pool = [p for p in holder_provider.pools if p.name == pool_name]
@@ -489,7 +502,7 @@ def view_balances_model(pool_name: str, use_raw_balances: bool = False):
         balance_borders = jenks_natural_breaks.classify(flat_unique_balances, n_classes=n_classes)
 
     holders = [{'address': address,
-                'balances': [(f"{b:.1f}" if b > 0 else '', fade_color(b, balance_borders))
+                'balances': [(format_balance(b), fade_color(b, balance_borders))
                              for b in balances]
                 }
                for address, balances in zip(pool.addresses, balances.tolist())]
