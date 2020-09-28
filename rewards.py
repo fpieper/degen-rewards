@@ -194,7 +194,7 @@ class Pool:
     balances: np.ndarray = None
     balance_borders: List[float] = None
     balances_raw: np.ndarray = None
-    balances_raw_borders: np.ndarray = None
+    balances_raw_borders: List[float] = None
 
 
 class HolderProvider:
