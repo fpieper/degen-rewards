@@ -459,6 +459,8 @@ def root(pool_weights: Optional[str] = None):
 
 
 def fade_color(value: float, class_borders: List[float]):
+    if value == 0:
+        return "white"
     normalized = normalize_value(value, class_borders)
     if normalized < 0.5:
         return f"rgb({int(normalized * 2 * 255)},0,255)"
